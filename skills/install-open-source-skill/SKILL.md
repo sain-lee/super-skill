@@ -68,21 +68,45 @@ Claude 的职责：查清该插件 README 里的**确切命令**和 marketplace 
 - 能用 `claude plugin` CLI 就代跑；只有交互式 `/plugin` TUI 需要用户亲自输入。
 - 安装位置选用户级（默认）还是项目级，拿不准先问用户。
 - 带 SessionStart hook 的插件：装好后提醒用户**新开会话**才完整生效。
+- **枚举 marketplace 里有哪些插件，必须以权威清单为准**：注册后读本地
+  `~/.claude/plugins/marketplaces/<name>/.claude-plugin/marketplace.json`，
+  或直连 `raw.githubusercontent.com/.../marketplace.json` 解析。**不要拿
+  WebFetch / README 摘要当完整列表**——它是小模型生成的有损概括，会漏项、会给错数量
+  （本 skill 初版就因此把 10 个插件误报成 4 个）。报数量/清单前先核对权威源。
 
 ---
 
 ## 已安装清单
 
-### superpowers — obra/superpowers
+环境快照，最后更新 2026-05-17。全部 scope=user，`claude plugin list` 均 ✔ enabled。
 
-- **来源**：https://github.com/obra/superpowers （作者 Jesse Vincent / obra）
-- **是什么**：一套 agentic 软件开发方法论 skills 合集（头脑风暴、规划、TDD、系统化调试、子 agent 代码评审、写新 skill 等），安装后在开发任务中自动引导工作流。
-- **形式**：Plugin（marketplace），版本 5.1.0
-- **实际安装方式**：CLI 代跑（`claude-plugins-official` 已预注册）：
-  `claude plugin install superpowers@claude-plugins-official`
-  备选社区 marketplace：`claude plugin marketplace add obra/superpowers-marketplace` 然后 `claude plugin install superpowers@superpowers-marketplace`
-- **scope**：user（全局）
-- **组成**：14 个 skills（brainstorming / test-driven-development / systematic-debugging / writing-skills 等）+ 1 个 SessionStart hook；常驻 ~723 tok/session。
-- **重启**：插件本体无需重启；其 SessionStart hook 需**新开会话**才挂上。
-- **验证结果**：`claude plugin list` 显示 `superpowers@claude-plugins-official` Status ✔ enabled。
-- **安装日期**：2026-05-17（已实际安装并验证）
+### marketplaces
+
+- `claude-plugins-official` — GitHub `anthropics/claude-plugins-official`（预注册，官方）
+- `superpowers-marketplace` — GitHub `obra/superpowers-marketplace`（社区，本次 `claude plugin marketplace add obra/superpowers-marketplace` 注册；权威清单 = 该仓库 `.claude-plugin/marketplace.json`，共 **10 个插件**）
+
+### 已装插件（8）
+
+| 插件@marketplace | 版本 | 组成 | 备注 |
+|---|---|---|---|
+| superpowers@claude-plugins-official | 5.1.0 | 14 skills + 1 SessionStart hook（常驻 ~723 tok） | 核心方法论库；hook 需新开会话生效 |
+| elements-of-style@superpowers-marketplace | 1.0.0 | 1 skill（writing-clearly-and-concisely） | Strunk 写作规则 |
+| superpowers-developing-for-claude-code@superpowers-marketplace | 0.3.1 | 2 skills（developing-claude-code-plugins / working-with-claude-code） | 开发插件/skill/MCP 的资源+官方文档 |
+| private-journal-mcp@superpowers-marketplace | 1.2.0 | MCP server（Node/TS 包） | ⚠️ 插件壳已装，MCP 本体是 npm 包，可能需 `npm install`+构建才真正可用；`details` 显示 MCP 0 |
+| double-shot-latte@superpowers-marketplace | 1.2.0 | 1 Stop hook | 自动判断是否继续，消除“要不要继续”打断 |
+| episodic-memory@superpowers-marketplace | 1.4.1 | 1 skill + 1 SessionStart hook + 1 MCP server（episodic-memory） | 跨会话语义记忆；hook 需新开会话生效 |
+| superpowers-chrome@superpowers-marketplace | 2.1.0 | 1 skill（browsing，17 CLI 命令 / MCP 模式） | BETA，轻度测试；需本机 Chrome |
+| claude-session-driver@superpowers-marketplace | 2.0.1 | 1 skill + 5 hooks（PreToolUse/SessionStart/Stop/UserPromptSubmit/SessionEnd） | 经 tmux 操控其它 Claude 会话；需 tmux；hook 多，新开会话生效 |
+
+安装方式统一为 CLI 代跑：`claude plugin install <plugin>@<marketplace>`（scope user）。
+
+### 未装 / 跳过（superpowers-marketplace 剩余 2）
+
+- `superpowers-lab` — 实验性杂项（tmux 自动化 / MCP 发现 / Slack 等）。用户本次未选；需要再装。
+- `superpowers-dev` — DEV 分支，**装前必须先卸载其它 superpowers 版本**，与已装 `superpowers` 冲突，**不装**。
+
+### 通用验证 / 生效提醒
+
+- 验证：`claude plugin list`（状态 enabled）+ `claude plugin details <plugin>`（组件清单）。
+- 多个插件带 SessionStart/Stop/PreToolUse 等 hook：**需新开 Claude Code 会话**这些 hook 才真正挂上。
+- `private-journal-mcp` / `episodic-memory` 的 MCP server 首次使用前可能需各自的运行依赖（Node 等），用到时再按其 README 启用。
