@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# Editors / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs / temp
+*.log
+tmp/
+.cache/
+
+# Python (if a skill ships scripts)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node (if a skill ships scripts)
+node_modules/
