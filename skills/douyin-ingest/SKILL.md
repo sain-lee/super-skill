@@ -13,7 +13,7 @@ description: 当用户要从抖音收藏夹批量采集新的财经/股票视频
 
 ## 前置：驱动与登录态
 
-1. **主驱动 = Playwright MCP**（`mcp__playwright__browser_*`），不是 superpowers-chrome——抖音「问问AI」是跨域 iframe，只有 Playwright 的 frame API/snapshot 读得到。详见 `references/operations.md` §0。
+1. **主驱动 = Playwright MCP**（`mcp__playwright__browser_*`），不是 superpowers-chrome——抖音「问问AI」是跨域 iframe，只有 Playwright 的 frame API/snapshot 读得到。详见 `references/operations.md` §0。**首次环境准备（装 Node≥18 / 注册 Playwright MCP / profile / 登录 / 重启）见 `SETUP.md`。**
 2. Playwright 已配 `--user-data-dir` 指向 `douyin` profile，复用持久登录态。用前先杀掉占用该 profile 的 superpowers-chrome Chrome（profile 锁，见 §0）。装/改 MCP 后须新开 claude 会话。
 3. `browser_navigate` 个人页，`browser_evaluate` 判登录（昵称「八百标兵奔北坡」/个人页标题=已登录；"扫码登录"=未登录），运行时发现、不写死选择器。
 4. **未登录** → 停下，提示用户在有头窗口扫码，登录后随 profile 持久化、后续免登。**绝不自动化登录。**
