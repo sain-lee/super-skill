@@ -2,6 +2,23 @@
 
 抖音 web 端 DOM 类名混淆且频繁变；本文件只描述**运行时如何发现**稳定特征、三级提取的具体动作、反爬礼仪、账本结构。**绝不在 SKILL.md 或这里硬编码哈希类名/固定选择器。**
 
+## 0. 浏览器接口约定（先读）
+
+全程用 `superpowers-chrome:browsing` 的 `use_browser` MCP 工具。**只用下列存在的 action**，不要臆造：
+`navigate`、`extract`、`scroll`、`await_element`、`await_text`、`click`、`set_profile`、`show_browser`、`browser_mode`。
+
+> 没有 `await` / `sleep` / `delay` 这种 action。等待只能用 `await_element` / `await_text`，或靠工具往返本身的节奏（见 §3）。
+
+**一次性建会话顺序（首次运行或换 profile 时）**——`set_profile` 要求 Chrome 先关闭，`show_browser` 会重启 Chrome 并以 GET 重载页面、丢失会话态，所以顺序必须是：
+
+1. 若 Chrome 在跑先杀掉（`set_profile` 不能在运行中的 Chrome 上改）。
+2. `{action:"set_profile", payload:"douyin"}`。
+3. `{action:"show_browser"}`（切有头；这步会重启 Chrome，属正常）。
+4. `{action:"browser_mode"}` 确认返回 `headless:false`、`profile:"douyin"`。
+5. 之后再 `navigate` 抖音。**不要先 navigate 再 show_browser**（会把刚加载的页面以 GET 重载、丢登录后状态）。
+
+后续运行 `douyin` profile 已持久化登录态，正常只需 `browser_mode` 确认 + `navigate`。
+
 ## 1. 运行时发现
 
 ### 1.1 登录态判定
@@ -18,7 +35,7 @@
 在「我的-收藏」tab 下：
 
 1. 用 `data-e2e` 等语义属性辅助定位「收藏」tab 与视频卡片（语义属性比哈希类名稳定）。
-2. 反复 `scroll`（payload 方向 `"down"`），**每次滚动后短暂 `await`** 让懒加载内容进来，再 `extract` html。
+2. 反复 `scroll`（payload 方向 `"down"`）；每次滚动后用 `await_element`/`await_text` 等待新一批卡片出现（没有稳定锚点时，靠下一次 `extract` 工具往返的天然间隔即可，见 §3），再 `extract` html。
 3. 对每次 `extract` 的 html 用正则 `/video/\d+` 收集视频链接，并就近取可见标题文本。
 4. 直到某次 `extract` 不再产生新的 `/video/\d+` 链接为止 → 列表加载完毕。
 5. **绝不写死哈希类名**；定位一律靠 `/video/\d+` 正则 + `data-e2e` 等语义属性。
@@ -35,7 +52,7 @@
 
 ### Tier 1 — AI 文稿/总结全文
 
-- 动作：`navigate` 到视频 url → `extract` → 按 §1.3 候选词找入口 → `click` → `await` → `extract` 面板文本。
+- 动作：`navigate` 到视频 url → `extract` → 按 §1.3 候选词找入口 → `click` → `await_element`/`await_text` 等文稿面板出现 → `extract` 面板文本。
 - 捕获：文稿全文（正文）、页面上的作者名、发布日期。
 - **校验**：若拿回的文稿异常短或为空（明显不是完整文稿）→ 视为 Tier 1 失败，降到 Tier 2。
 
@@ -54,7 +71,7 @@
 ## 3. 反爬礼仪
 
 - 用**有头**的真实 `douyin` profile（已持久化登录态），不开无头、不伪造。
-- **类人节奏**：滚动分批进行，每步之间留间隔，不瞬时狂滚到底；逐条视频之间也留间隔。
+- **类人节奏**：没有 `sleep` action，节奏靠两点实现——① 每次 `scroll` 后跟一个 `await_element`/`await_text`（等真实加载，而非空转）；② 一次只滚一屏、`extract` 后再决定是否继续，不连发多个 `scroll` 把页面瞬间拉到底；逐条视频之间同理，处理完一条（含写账本）再 `navigate` 下一条，不并发开多 tab 抢内容。
 - 出现**验证码 / 风控拦截页 / 异常重定向**（如跳到登录页或安全验证页）→ **立即停止本轮**，把已处理视频的账本行写好，报告交回用户。
 - **不绕风控、不逆向抖音接口、不破签名**。失败即停并如实报告，不硬刚。
 

@@ -13,7 +13,7 @@ description: 当用户要从抖音收藏夹批量采集新的财经/股票视频
 
 ## 前置：登录态保障
 
-1. 用 `superpowers-chrome:browsing`（`use_browser` MCP）。设置专用 profile 名 `douyin`，**有头模式**：先设 profile，再 `show_browser` 让窗口可见（反爬更低、可人工扫码）。
+1. 用 `superpowers-chrome:browsing`（`use_browser` MCP）。专用 profile 名 `douyin`，**有头模式**（反爬更低、可人工扫码）。`set_profile`/`show_browser` 会重启 Chrome 且有先后约束，**严格按 `references/operations.md` §0 的一次性建会话顺序操作**，不要自己压缩成一步。
 2. 导航到抖音个人主页，`extract` 页面，按**登录标志**（如头像 / 「我的」入口；未登录时出现「登录」按钮）判断登录态。具体登录标志在运行时发现，**不写死选择器**。
 3. **未登录** → 立即停止，提示用户在弹出的可见窗口里扫码登录，等待用户确认后重新 `extract` 复检。**绝不自动化登录流程。**
 4. 登录态随 `douyin` profile 持久化，是一次性人工动作，后续运行免登。
