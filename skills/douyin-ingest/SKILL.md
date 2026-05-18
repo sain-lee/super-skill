@@ -1,6 +1,6 @@
 ---
 name: douyin-ingest
-description: 当用户要从抖音收藏夹批量采集新的财经/股票视频并整合进投资知识库时使用。触发语：『扫一下抖音收藏』『扫收藏夹』『更新抖音收藏到投资库』『把抖音新收藏的财经视频整理进来』『同步抖音收藏』『ingest 抖音』等采集动作。本 skill 负责：用 superpowers-chrome 控制专用已登录的有头 Chrome profile 打开抖音『我的-收藏』、枚举新增收藏视频、三级降级提取视频内容、过滤出财经/股票相关项、按 investment-views 的 Type D 流程落档、用 JSONL 账本去重幂等。不要在用户只是查询投资观点（如『光模块还能拿吗』『恩哥怎么看存储』『HBM 周期到顶了吗』）时触发——查询是 investment-views 的职责；本 skill 只在用户要『去抖音取新视频』这一采集动作时触发。
+description: 当用户要从抖音收藏夹批量采集新的财经/股票视频并整合进投资知识库时使用。触发语：『扫一下抖音收藏』『扫收藏夹』『更新抖音收藏到投资库』『把抖音新收藏的财经视频整理进来』『同步抖音收藏』『ingest 抖音』等采集动作。本 skill 负责：用 Playwright MCP 驱动已登录的 Chrome（douyin profile）打开抖音『我的-收藏』、枚举新增收藏视频、经『问问AI』逐字稿三级降级提取内容、过滤出财经/股票相关项、按 investment-views 的 Type D 流程落档、用 JSONL 账本去重幂等。不要在用户只是查询投资观点（如『光模块还能拿吗』『恩哥怎么看存储』『HBM 周期到顶了吗』）时触发——查询是 investment-views 的职责；本 skill 只在用户要『去抖音取新视频』这一采集动作时触发。
 ---
 
 # douyin-ingest
@@ -11,20 +11,19 @@ description: 当用户要从抖音收藏夹批量采集新的财经/股票视频
 
 分工：本 skill = **去抖音取新视频 + 结构化 + 路由**；`investment-views` = **知识查询 + Type D 整合规则的唯一来源**。用户只是查观点（"光模块还能拿吗""恩哥怎么看存储"）时不要触发本 skill，那是 `investment-views` 的职责。
 
-## 前置：登录态保障
+## 前置：驱动与登录态
 
-1. 用 `superpowers-chrome:browsing`（`use_browser` MCP）。专用 profile 名 `douyin`，**有头模式**（反爬更低、可人工扫码）。`set_profile`/`show_browser` 会重启 Chrome 且有先后约束，**严格按 `references/operations.md` §0 的一次性建会话顺序操作**，不要自己压缩成一步。
-2. 导航到抖音个人主页，`extract` 页面，按**登录标志**（如头像 / 「我的」入口；未登录时出现「登录」按钮）判断登录态。具体登录标志在运行时发现，**不写死选择器**。
-3. **未登录** → 立即停止，提示用户在弹出的可见窗口里扫码登录，等待用户确认后重新 `extract` 复检。**绝不自动化登录流程。**
-4. 登录态随 `douyin` profile 持久化，是一次性人工动作，后续运行免登。
-5. DOM 发现与异常处理细节见 `references/operations.md`。
+1. **主驱动 = Playwright MCP**（`mcp__playwright__browser_*`），不是 superpowers-chrome——抖音「问问AI」是跨域 iframe，只有 Playwright 的 frame API/snapshot 读得到。详见 `references/operations.md` §0。
+2. Playwright 已配 `--user-data-dir` 指向 `douyin` profile，复用持久登录态。用前先杀掉占用该 profile 的 superpowers-chrome Chrome（profile 锁，见 §0）。装/改 MCP 后须新开 claude 会话。
+3. `browser_navigate` 个人页，`browser_evaluate` 判登录（昵称「八百标兵奔北坡」/个人页标题=已登录；"扫码登录"=未登录），运行时发现、不写死选择器。
+4. **未登录** → 停下，提示用户在有头窗口扫码，登录后随 profile 持久化、后续免登。**绝不自动化登录。**
+5. **滑块风控**：首次自动化导航常弹滑块（与驱动无关）。**绝不程序化破解**——停下提示用户在可见窗口手动拖过，确认后继续。属设计内的偶发人工兜底。
 
 ## 步骤 1 · 枚举收藏
 
-1. 导航到「我的-收藏」tab。
-2. 类人节奏渐进滚动加载（分批 + 间隔，不瞬时狂滚），直到列表不再增长。
-3. `extract` 页面，用正则匹配 `/video/\d+` 链接 + 稳定的 `data-e2e` 等语义属性，收集每条 `{videoId, url, title}`。**不写死哈希类名**（抖音类名混淆且频繁变）。
-4. 选择器/滚动模式等易变细节见 `references/operations.md`。
+1. `browser_navigate` 个人页，点「收藏」tab（按可见文本"收藏"定位，不写哈希类名）。
+2. 类人节奏渐进滚动 + 等待，`browser_evaluate` 用正则 `/video/(\d+)/` 从视频链接收集每条 `{videoId}`，直到不再产生新 id。
+3. 列表锚文本含播放量噪声，标题以视频页为准。细节见 `references/operations.md` §1.2。
 
 ## 步骤 2 · 去重
 
@@ -34,13 +33,13 @@ description: 当用户要从抖音收藏夹批量采集新的财经/股票视频
 
 ## 步骤 3 · 提取视频内容（三级降级）
 
-对每条新视频打开视频页，按顺序尝试，**取到即停**：
+每条按顺序尝试，**取到即停**（详细动作见 `references/operations.md` §1.3、§2）：
 
-1. 找抖音「视频文稿 / AI 总结 / 智能总结 / 文案」入口，展开取全文。
+1. **问问AI 逐字稿（首选）**：`browser_navigate` 到 modal URL `https://www.douyin.com/user/self?modal_id={id}&showTab=favorite_collection`（不是 `/video/{id}`）→ 点右侧竖栏**最上方**「问问 AI」图标（hover 验 tooltip）→ 跨域 iframe `so-landing.douyin.com` → `browser_snapshot` 读 iframe。问问AI 按账号持久化历史，已有则直接复用；没有就 `browser_type` 发提示词「把这个视频的语音内容逐字转成文字，输出完整的原始口语原文，不要总结、不要概括、不要分点、不要改写，只要逐字稿全文。」等输出完再 snapshot 取**逐字稿原文**。
 2. 取不到 → 标题 + 作者 + 简介 + 可见字幕/置顶评论。
 3. 仍不足以判断 → 状态标 `needs-manual`，**不写入知识库**（不得用幻觉填充）。
 
-每条同时抓取：**作者名、发布日期**。各级具体 `use_browser` 动作见 `references/operations.md`。
+每条同时抓取：**作者名、发布日期**。逐字稿即博主原话，交 Claude 按 Type D 结构化，不让问问AI 替你总结。
 
 ## 步骤 4 · 财经相关性过滤
 
@@ -65,10 +64,12 @@ description: 当用户要从抖音收藏夹批量采集新的财经/股票视频
 
 ## 注意事项
 
-- **有头专用 profile**：固定用有头的 `douyin` profile，登录态持久化，绝不自动化登录。
-- **运行时发现选择器，不硬编码**：抖音 DOM 类名混淆且频繁变，全部按稳定语义特征运行时定位。
-- **提取不确定就降级标记，绝不编造**：内容不足判断时标 `needs-manual` 且不写知识库，不得用幻觉污染用户笔记。
+- **Playwright MCP 为主驱动**：问问AI 是跨域 iframe，只有 Playwright 的 snapshot/frame API 读得到；superpowers-chrome 读不到。注意 profile 锁、装/改 MCP 须新开会话。
+- **打开视频用 modal URL**：`user/self?modal_id={id}&showTab=favorite_collection`，**不要用** `/video/{id}`（会弹回个人页）。
+- **问问AI 持久化历史**：同一视频再进，上次的提问+逐字稿原样在，直接复用，省一次问答。
+- **运行时发现，不硬编码**：抖音类名哈希且频繁变（问问AI 图标类名实测会变），按位置/tooltip/语义运行时定位。
+- **提取不确定就降级标记，绝不编造**：内容不足标 `needs-manual` 且不写知识库，不得用幻觉污染用户笔记。
 - **账本幂等、可续跑**：`id` 为去重键，单条 checkpoint，重复运行只处理新增。
 - **整合规则单一来源**：Type D 路由与整合规则只在 `investment-views`，本 skill 引用不复制。
-- **反爬失败即停、报告交回**：遇验证码/风控页/异常重定向立即停止该轮、写已完成账本、报告交回用户，**不硬刚、不绕风控、不逆向接口**。
+- **滑块风控人工兜底，不绕**：风控与驱动无关；首次自动化导航常弹滑块 → 停下让用户在有头窗口手动拖过再继续，**绝不程序化破解/绕风控/逆向接口**；其它风控失败即停、写好已完成账本、如实报告。
 - **收藏量大可分次跑完**：逐条 checkpoint 支持分多次运行直到全部处理完。
